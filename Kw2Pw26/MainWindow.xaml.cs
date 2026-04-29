@@ -667,7 +667,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// Creates the table using typed column definitions from DBFCHK.CSV when available;
     /// falls back to NVARCHAR(MAX) for any column not in the schema.
-    /// All columns are nullable. Optionally prepends a NewID UNIQUEIDENTIFIER column.
+    /// All columns are nullable. Optionally prepends a NewID BIGINT IDENTITY auto-increment column.
     /// </summary>
     private static void CreateTableFromSchema(SqlConnection conn, string tableName,
                                                string[] headers, List<DbfFieldDef>? fieldDefs,
@@ -680,7 +680,7 @@ public partial class MainWindow : Window
         var colDefs = new List<string>();
 
         if (createIdField)
-            colDefs.Add("[NewID] UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID()");
+            colDefs.Add("[NewID] BIGINT IDENTITY(1,1) NOT NULL");
 
         colDefs.AddRange(headers.Select(h =>
         {
