@@ -51,11 +51,38 @@
                 </Grid.ColumnDefinitions>
                 <!-- STOP pinned to the left -->
                 <Button x:Name="BtnStop" Grid.Column="0"
-                        Content="STOP" Width="80" Height="26"
+                        Width="80" Height="26"
                         HorizontalAlignment="Left"
-                        Foreground="White" Background="#CC2200"
                         IsEnabled="False"
-                        Click="BtnStop_Click"/>
+                        Click="BtnStop_Click">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Bd"
+                                    Background="#CC2200"
+                                    BorderBrush="#991900"
+                                    BorderThickness="1"
+                                    CornerRadius="2">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  TextElement.Foreground="White"
+                                                  TextElement.FontWeight="SemiBold"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="Bd" Property="Background" Value="#888888"/>
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#666666"/>
+                                </Trigger>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#FF3300"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#991100"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                    STOP
+                </Button>
                 <!-- Remaining buttons centered -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
                     <Button x:Name="BtnClear"    Content="CLEAR"    Style="{StaticResource BottomBtn}" Click="BtnClear_Click"/>
