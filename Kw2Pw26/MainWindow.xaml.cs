@@ -19,6 +19,9 @@ public partial class MainWindow : Window
     // Log path is null until the first write in a session; created lazily beside the .exe.
     private string? _logPath;
 
+    // Cancellation source for the active import; null when no import is running.
+    private CancellationTokenSource? _cts;
+
     /// <summary>Schema rows from DBFCHK.CSV, keyed by DBF name (upper-case).</summary>
     private Dictionary<string, List<DbfFieldDef>> _dbfFields = [];
 
@@ -251,6 +254,7 @@ public partial class MainWindow : Window
         _logPath = null;
         BtnImport.IsEnabled = false;
         BtnViewLog.IsEnabled = false;
+        ChkCreateIdField.IsChecked = true;
         SetStatus("Form cleared.");
         TxtConsole.Clear();
         AppendConsole("Form cleared — ready.");
@@ -296,6 +300,7 @@ public partial class MainWindow : Window
         }
 
         BtnImport.IsEnabled = false;
+        BtnStop.IsEnabled = true;
         // Fresh timestamped log file for each import run
         _logPath = null;
         BtnViewLog.IsEnabled = false;
@@ -304,11 +309,20 @@ public partial class MainWindow : Window
         AppendConsole($"Import started. {selected.Count} file(s) selected.");
         AppendConsole($"System DB: {TxtSystemDbName.Text.Trim()}  |  Company DB: {TxtCompanyDbName.Text.Trim()}");
 
+        _cts = new CancellationTokenSource();
         try
         {
-            await Task.Run(() => RunImport(connStr, selected, options, maxErrors));
-            SetStatus("Import complete. See log for details.");
-            AppendConsole("Import complete.");
+            await Task.Run(() => RunImport(connStr, selected, options, maxErrors, _cts.Token));
+            if (_cts.IsCancellationRequested)
+            {
+                SetStatus("Import stopped by user.");
+                AppendConsole("Import stopped by user.");
+            }
+            else
+            {
+                SetStatus("Import complete. See log for details.");
+                AppendConsole("Import complete.");
+            }
             AppendConsole("─────────────────────────────────────────");
         }
         catch (Exception ex)
@@ -319,8 +333,19 @@ public partial class MainWindow : Window
         }
         finally
         {
+            _cts.Dispose();
+            _cts = null;
             BtnImport.IsEnabled = true;
+            BtnStop.IsEnabled = false;
         }
+    }
+
+    private void BtnStop_Click(object sender, RoutedEventArgs e)
+    {
+        _cts?.Cancel();
+        BtnStop.IsEnabled = false;
+        SetStatus("Stop requested — finishing current file…");
+        AppendConsole("Stop requested — will halt after current file.");
     }
 
     private void BtnViewLog_Click(object sender, RoutedEventArgs e)
@@ -349,7 +374,7 @@ public partial class MainWindow : Window
     private void BtnExit_Click(object sender, RoutedEventArgs e) => Close();
 
     // ── Import Logic ───────────────────────────────────────────────────────
-    private void RunImport(string connStr, List<CsvFileItem> files, ImportOptions opts, int maxErrors)
+    private void RunImport(string connStr, List<CsvFileItem> files, ImportOptions opts, int maxErrors, CancellationToken ct)
     {
         int totalErrors = 0;
 
@@ -373,6 +398,9 @@ public partial class MainWindow : Window
 
         foreach (var file in ordered)
         {
+            // Check for stop request between files — as soon as the current file finishes.
+            if (ct.IsCancellationRequested) return;
+
             try
             {
                 // Determine target database from DBF.CSV routing; fall back based on user options
@@ -498,19 +526,19 @@ public partial class MainWindow : Window
                     }
                     DropTable(conn, tableName);
                     AppendConsole($"  Dropped existing table [{tableName}]. Re-creating…");
-                    CreateTableFromSchema(conn, tableName, headers, fieldDefs);
+                    CreateTableFromSchema(conn, tableName, headers, fieldDefs, opts.CreateIdField);
                     break;
                 case ExistsAction.Overwrite:
                     DropTable(conn, tableName);
                     AppendConsole($"  Dropped existing table [{tableName}]. Re-creating…");
-                    CreateTableFromSchema(conn, tableName, headers, fieldDefs);
+                    CreateTableFromSchema(conn, tableName, headers, fieldDefs, opts.CreateIdField);
                     break;
             }
         }
         else
         {
             AppendConsole($"  Creating table [{tableName}]…");
-            CreateTableFromSchema(conn, tableName, headers, fieldDefs);
+            CreateTableFromSchema(conn, tableName, headers, fieldDefs, opts.CreateIdField);
             AppendConsole($"  Table [{tableName}] created.");
         }
 
@@ -524,6 +552,11 @@ public partial class MainWindow : Window
             try
             {
                 var values = headers.Select(h => csv.GetField(h)).ToList();
+
+                // Skip entirely blank rows — every column is null or whitespace.
+                if (values.All(v => string.IsNullOrWhiteSpace(v)))
+                    continue;
+
                 InsertRow(conn, tableName, headers, values!, opts, ref totalErrors, maxErrors);
             }
             catch (ImportAbortException) { throw; }
@@ -560,7 +593,11 @@ public partial class MainWindow : Window
 
         using var cmd = new SqlCommand($"INSERT INTO {EscapeId(tableName)} ({colList}) VALUES ({paramList})", conn);
         for (int i = 0; i < headers.Length; i++)
-            cmd.Parameters.AddWithValue($"@p{i}", (object?)values[i] ?? DBNull.Value);
+        {
+            // Treat empty / whitespace CSV values as NULL so numeric/date columns don't throw a conversion error.
+            object paramVal = string.IsNullOrWhiteSpace(values[i]) ? DBNull.Value : (object)values[i];
+            cmd.Parameters.AddWithValue($"@p{i}", paramVal);
+        }
 
         try
         {
@@ -593,7 +630,10 @@ public partial class MainWindow : Window
                         $"UPDATE {EscapeId(tableName)} SET {string.Join(", ", setClauses)} WHERE {string.Join(" AND ", whereClauses)}",
                         conn);
                     for (int i = 0; i < headers.Length; i++)
-                        upd.Parameters.AddWithValue($"@p{i}", (object?)values[i] ?? DBNull.Value);
+                    {
+                        object paramVal = string.IsNullOrWhiteSpace(values[i]) ? DBNull.Value : (object)values[i];
+                        upd.Parameters.AddWithValue($"@p{i}", paramVal);
+                    }
                     upd.ExecuteNonQuery();
                     LogEntry(opts.RecordLog, $"[UPDATE] Overwrote duplicate in [{tableName}]");
                     break;
@@ -627,22 +667,28 @@ public partial class MainWindow : Window
     /// <summary>
     /// Creates the table using typed column definitions from DBFCHK.CSV when available;
     /// falls back to NVARCHAR(MAX) for any column not in the schema.
+    /// All columns are nullable. Optionally prepends a NewID UNIQUEIDENTIFIER column.
     /// </summary>
     private static void CreateTableFromSchema(SqlConnection conn, string tableName,
-                                               string[] headers, List<DbfFieldDef>? fieldDefs)
+                                               string[] headers, List<DbfFieldDef>? fieldDefs,
+                                               bool createIdField)
     {
-        // Build a lookup of field name → definition (case-insensitive)
         var lookup = fieldDefs?
             .ToDictionary(f => f.FieldName, f => f, StringComparer.OrdinalIgnoreCase)
             ?? new Dictionary<string, DbfFieldDef>(StringComparer.OrdinalIgnoreCase);
 
-        var colDefs = headers.Select(h =>
+        var colDefs = new List<string>();
+
+        if (createIdField)
+            colDefs.Add("[NewID] UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID()");
+
+        colDefs.AddRange(headers.Select(h =>
         {
             string sqlType = lookup.TryGetValue(h, out var def)
                 ? MapSqlType(def)
                 : "NVARCHAR(MAX)";
-            return $"{EscapeId(h)} {sqlType}";
-        });
+            return $"{EscapeId(h)} {sqlType} NULL";
+        }));
 
         using var cmd = new SqlCommand(
             $"CREATE TABLE {EscapeId(tableName)} ({string.Join(", ", colDefs)})", conn);
@@ -778,7 +824,10 @@ public partial class MainWindow : Window
         Dispatcher.InvokeAsync(() =>
         {
             TxtConsole.AppendText(line + "\n");
-            ConsoleScroller.ScrollToBottom();
+            // Defer scroll until after WPF has completed its layout pass for the new text.
+            TxtConsole.Dispatcher.InvokeAsync(
+                () => ConsoleScroller.ScrollToBottom(),
+                System.Windows.Threading.DispatcherPriority.Background);
         });
     }
 
@@ -809,7 +858,8 @@ public partial class MainWindow : Window
         ImportSystemTables:   CmbImportSystemTables.SelectedIndex == 0,
         ImportCompanyTables:  CmbImportCompanyTables.SelectedIndex == 0,
         SystemDbName:         TxtSystemDbName.Text.Trim(),
-        CompanyDbName:        TxtCompanyDbName.Text.Trim());
+        CompanyDbName:        TxtCompanyDbName.Text.Trim(),
+        CreateIdField:        ChkCreateIdField.IsChecked == true);
 
     private static ExistsAction ComboToAction(ComboBox cmb) => cmb.SelectedIndex switch
     {
@@ -855,7 +905,8 @@ public record ImportOptions(
     bool ImportSystemTables,
     bool ImportCompanyTables,
     string SystemDbName,
-    string CompanyDbName);
+    string CompanyDbName,
+    bool CreateIdField);
 
 public class ImportAbortException : Exception { }
 

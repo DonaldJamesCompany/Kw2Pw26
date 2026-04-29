@@ -43,12 +43,27 @@
 
         <!-- ── BOTTOM BUTTON BAR (docked first so it stays pinned) ── -->
         <Border DockPanel.Dock="Bottom" BorderBrush="#CCCCCC" BorderThickness="0,1,0,0" Padding="0,6,0,0" Margin="0,6,0,0">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                <Button x:Name="BtnClear"    Content="CLEAR"    Style="{StaticResource BottomBtn}" Click="BtnClear_Click"/>
-                <Button x:Name="BtnImport"   Content="IMPORT"   Style="{StaticResource BottomBtn}" Click="BtnImport_Click" IsEnabled="False"/>
-                <Button x:Name="BtnViewLog"  Content="VIEW LOG" Style="{StaticResource BottomBtn}" Width="80" Click="BtnViewLog_Click"/>
-                <Button x:Name="BtnExit"     Content="EXIT"     Style="{StaticResource BottomBtn}" Click="BtnExit_Click"/>
-            </StackPanel>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <!-- STOP pinned to the left -->
+                <Button x:Name="BtnStop" Grid.Column="0"
+                        Content="STOP" Width="80" Height="26"
+                        HorizontalAlignment="Left"
+                        Foreground="White" Background="#CC2200"
+                        IsEnabled="False"
+                        Click="BtnStop_Click"/>
+                <!-- Remaining buttons centered -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Button x:Name="BtnClear"    Content="CLEAR"    Style="{StaticResource BottomBtn}" Click="BtnClear_Click"/>
+                    <Button x:Name="BtnImport"   Content="IMPORT"   Style="{StaticResource BottomBtn}" Click="BtnImport_Click" IsEnabled="False"/>
+                    <Button x:Name="BtnViewLog"  Content="VIEW LOG" Style="{StaticResource BottomBtn}" Width="80" Click="BtnViewLog_Click"/>
+                    <Button x:Name="BtnExit"     Content="EXIT"     Style="{StaticResource BottomBtn}" Click="BtnExit_Click"/>
+                </StackPanel>
+            </Grid>
         </Border>
 
         <!-- ── MAIN CONTENT ── -->
@@ -165,6 +180,10 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="4"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="4"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="4"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <!-- ROW 1: Database exists -->
@@ -265,6 +284,14 @@
                                 Style="{StaticResource SmallBtn}" Margin="4,0,0,0"
                                 Click="BtnBrowseIni_Click"/>
                     </Grid>
+
+                    <!-- ROW 8: Create ID field -->
+                    <CheckBox x:Name="ChkCreateIdField"
+                              Grid.Row="14" Grid.Column="0" Grid.ColumnSpan="9"
+                              Content="Create ID field?  (adds NewID UNIQUEIDENTIFIER DEFAULT NEWID() as first column)"
+                              IsChecked="True"
+                              VerticalAlignment="Center"
+                              Margin="0,2,0,0"/>
                 </Grid>
             </GroupBox>
 
@@ -284,7 +311,9 @@
                                  BorderThickness="0"
                                  IsReadOnly="True"
                                  TextWrapping="NoWrap"
-                                 VerticalAlignment="Top"
+                                 VerticalAlignment="Stretch"
+                                 HorizontalAlignment="Stretch"
+                                 MinHeight="140"
                                  Padding="4,2"
                                  Text=""/>
                     </ScrollViewer>
