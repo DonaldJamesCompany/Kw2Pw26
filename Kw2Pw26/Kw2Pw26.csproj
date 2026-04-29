@@ -6,7 +6,12 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <ApplicationIcon>Icons\Kw2Pw26.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Icons\Kw2Pw26.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="CsvHelper" Version="33.1.0" />

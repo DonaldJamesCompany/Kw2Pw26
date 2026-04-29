@@ -6,6 +6,7 @@
         xmlns:local="clr-namespace:Kw2Pw26"
         mc:Ignorable="d"
         Title="CSV → SQL Server Importer"
+        Icon="Icons/Kw2Pw26.ico"
         SizeToContent="Height"
         Width="620"
         MinWidth="520"
