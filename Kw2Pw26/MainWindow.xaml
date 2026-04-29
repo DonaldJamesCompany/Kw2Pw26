@@ -316,7 +316,7 @@
                     <!-- ROW 8: Create ID field -->
                     <CheckBox x:Name="ChkCreateIdField"
                               Grid.Row="14" Grid.Column="0" Grid.ColumnSpan="9"
-                              Content="Create ID field?  (adds NewID UNIQUEIDENTIFIER DEFAULT NEWID() as first column)"
+                              Content="Create ID field?"
                               IsChecked="True"
                               VerticalAlignment="Center"
                               Margin="0,2,0,0"/>
