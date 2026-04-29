@@ -268,6 +268,29 @@
                 </Grid>
             </GroupBox>
 
+            <!-- Activity Console -->
+            <GroupBox Header="Activity" Padding="4,4,4,4" Margin="0,0,0,6">
+                <Border BorderBrush="#333333" BorderThickness="1" CornerRadius="2">
+                    <ScrollViewer x:Name="ConsoleScroller"
+                                  Height="140"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  Background="Black">
+                        <TextBox x:Name="TxtConsole"
+                                 Background="Black"
+                                 Foreground="#00FF00"
+                                 FontFamily="Consolas"
+                                 FontSize="12"
+                                 BorderThickness="0"
+                                 IsReadOnly="True"
+                                 TextWrapping="NoWrap"
+                                 VerticalAlignment="Top"
+                                 Padding="4,2"
+                                 Text=""/>
+                    </ScrollViewer>
+                </Border>
+            </GroupBox>
+
             <!-- Status bar -->
             <Border BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="2" Padding="4,2">
                 <TextBlock x:Name="TxtStatus" Text="Ready." FontSize="11" Foreground="#444444" TextWrapping="Wrap"/>

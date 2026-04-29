@@ -37,14 +37,17 @@ public partial class MainWindow : Window
     private async void BtnTest_Click(object sender, RoutedEventArgs e)
     {
         SetStatus("Testing connection…");
+        AppendConsole("Testing SQL Server connection…");
         try
         {
             await using var conn = new SqlConnection(TxtConnectionString.Text.Trim());
             await conn.OpenAsync();
+            AppendConsole($"Connection successful. Server: {conn.DataSource}, Version: {conn.ServerVersion}");
             SetStatus("✔ Connection successful.");
         }
         catch (Exception ex)
         {
+            AppendConsole($"Connection FAILED: {ex.Message}");
             SetStatus($"✘ Connection failed: {ex.Message}");
         }
     }
@@ -73,7 +76,11 @@ public partial class MainWindow : Window
         {
             _files.Add(new CsvFileItem(Path.GetFileName(file), file));
         }
-        SetStatus(_files.Count == 0 ? "No CSV files found in selected folder." : $"{_files.Count} CSV file(s) found.");
+        string msg = _files.Count == 0 ? "No CSV files found in selected folder." : $"{_files.Count} CSV file(s) found.";
+        SetStatus(msg);
+        AppendConsole(_files.Count == 0
+            ? $"CSV folder selected: {folder} — no .csv files found."
+            : $"CSV folder: {folder} — {_files.Count} file(s) loaded: {string.Join(", ", _files.Select(f => f.FileName))}");
     }
 
     // ── File List Buttons ──────────────────────────────────────────────────
@@ -149,12 +156,15 @@ public partial class MainWindow : Window
         {
             LoadDbfConfig(dbfchkPath, dbfPath);
             BtnImport.IsEnabled = true;
-            SetStatus($"✔ Config loaded — {_dbfTables.Count} table(s), {_dbfFields.Values.Sum(l => l.Count)} field definition(s). IMPORT enabled.");
+            string msg = $"✔ Config loaded — {_dbfTables.Count} table(s), {_dbfFields.Values.Sum(l => l.Count)} field definition(s). IMPORT enabled.";
+            SetStatus(msg);
+            AppendConsole($"Config CHECK passed. DBF.CSV: {_dbfTables.Count} table routing entries. DBFCHK.CSV: {_dbfFields.Values.Sum(l => l.Count)} field definitions across {_dbfFields.Count} table(s). IMPORT enabled.");
         }
         catch (Exception ex)
         {
             BtnImport.IsEnabled = false;
             SetStatus($"✘ Error reading config CSV files: {ex.Message}");
+            AppendConsole($"Config CHECK failed: {ex.Message}");
         }
     }
 
@@ -242,6 +252,8 @@ public partial class MainWindow : Window
         BtnImport.IsEnabled = false;
         BtnViewLog.IsEnabled = false;
         SetStatus("Form cleared.");
+        TxtConsole.Clear();
+        AppendConsole("Form cleared — ready.");
     }
 
     private async void BtnImport_Click(object sender, RoutedEventArgs e)
@@ -288,15 +300,22 @@ public partial class MainWindow : Window
         _logPath = null;
         BtnViewLog.IsEnabled = false;
         SetStatus("Importing…");
+        AppendConsole("─────────────────────────────────────────");
+        AppendConsole($"Import started. {selected.Count} file(s) selected.");
+        AppendConsole($"System DB: {TxtSystemDbName.Text.Trim()}  |  Company DB: {TxtCompanyDbName.Text.Trim()}");
 
         try
         {
             await Task.Run(() => RunImport(connStr, selected, options, maxErrors));
             SetStatus("Import complete. See log for details.");
+            AppendConsole("Import complete.");
+            AppendConsole("─────────────────────────────────────────");
         }
         catch (Exception ex)
         {
             SetStatus($"Import aborted: {ex.Message}");
+            AppendConsole($"Import ABORTED: {ex.Message}");
+            AppendConsole("─────────────────────────────────────────");
         }
         finally
         {
@@ -350,6 +369,7 @@ public partial class MainWindow : Window
 
         AppendLog($"[INFO] Import order ({ordered.Count} file(s)): " +
                   string.Join(", ", ordered.Select(f => f.FileName)));
+        AppendConsole($"Import order ({ordered.Count} file(s)): {string.Join(", ", ordered.Select(f => f.FileName))}");
 
         foreach (var file in ordered)
         {
@@ -362,21 +382,31 @@ public partial class MainWindow : Window
                 if (isCompany && !opts.ImportCompanyTables)
                 {
                     AppendLog($"[SKIP] {file.FileName} → company table, Import Company Tables = No.");
+                    AppendConsole($"SKIP {file.FileName} — company table, Import Company Tables = No.");
                     continue;
                 }
                 if (!isCompany && !opts.ImportSystemTables)
                 {
                     AppendLog($"[SKIP] {file.FileName} → system table, Import System Tables = No.");
+                    AppendConsole($"SKIP {file.FileName} — system table, Import System Tables = No.");
                     continue;
                 }
 
                 string targetDb = isCompany ? opts.CompanyDbName : opts.SystemDbName;
-                baseBuilder.InitialCatalog = targetDb;
+                AppendConsole($"Processing {file.FileName} → [{targetDb}] ({(isCompany ? "company" : "system")})");
 
+                // Connect to master first so we can create the target DB if it doesn't exist yet.
+                baseBuilder.InitialCatalog = "master";
+                using (var masterConn = new SqlConnection(baseBuilder.ConnectionString))
+                {
+                    masterConn.Open();
+                    EnsureDatabase(masterConn, targetDb, opts);
+                }
+
+                // Now connect directly to the target database for table/import work.
+                baseBuilder.InitialCatalog = targetDb;
                 using var conn = new SqlConnection(baseBuilder.ConnectionString);
                 conn.Open();
-
-                EnsureDatabase(conn, targetDb, opts);
 
                 _dbfFields.TryGetValue(tableKey, out var fieldDefs);
                 ImportFile(conn, file.FullPath, fieldDefs, opts, ref totalErrors, maxErrors);
@@ -384,15 +414,18 @@ public partial class MainWindow : Window
             catch (ImportAbortException)
             {
                 AppendLog($"[ABORT] Max errors ({maxErrors}) reached. Import stopped.");
+                AppendConsole($"ABORT — max errors ({maxErrors}) reached. Import stopped.");
                 return;
             }
             catch (Exception ex)
             {
                 AppendLog($"[ERROR] {file.FileName}: {ex.Message}");
+                AppendConsole($"ERROR processing {file.FileName}: {ex.Message}");
                 totalErrors++;
                 if (totalErrors >= maxErrors)
                 {
                     AppendLog($"[ABORT] Max errors ({maxErrors}) reached. Import stopped.");
+                    AppendConsole($"ABORT — max errors ({maxErrors}) reached. Import stopped.");
                     return;
                 }
             }
@@ -401,7 +434,7 @@ public partial class MainWindow : Window
 
     private void EnsureDatabase(SqlConnection conn, string dbName, ImportOptions opts)
     {
-        // Connection is already open against the target DB; check existence via master
+        // conn is open against master; safe to check and create the target DB.
         bool exists = DatabaseExists(conn, dbName);
         if (exists) return;
 
@@ -427,6 +460,7 @@ public partial class MainWindow : Window
     {
         string tableName = Path.GetFileNameWithoutExtension(csvPath);
         AppendLog($"[INFO] Processing file: {Path.GetFileName(csvPath)} → [{conn.Database}].[{tableName}]");
+        AppendConsole($"  Opening {Path.GetFileName(csvPath)} for table [{tableName}] in [{conn.Database}]");
 
         var csvCfg = new CsvConfiguration(CultureInfo.InvariantCulture)
         {
@@ -441,6 +475,7 @@ public partial class MainWindow : Window
         csv.Read();
         csv.ReadHeader();
         string[] headers = csv.HeaderRecord!;
+        AppendConsole($"  Columns ({headers.Length}): {string.Join(", ", headers)}");
 
         bool tableExists = TableExists(conn, tableName);
 
@@ -452,28 +487,37 @@ public partial class MainWindow : Window
                     throw new InvalidOperationException($"Table [{tableName}] already exists.");
                 case ExistsAction.Skip:
                     AppendLog($"[SKIP] Table [{tableName}] exists — skipping file.");
+                    AppendConsole($"  SKIP — table [{tableName}] already exists.");
                     return;
                 case ExistsAction.Ask:
                     if (!AskUser($"Table [{tableName}] already exists. Drop and recreate?"))
                     {
                         AppendLog($"[SKIP] Table [{tableName}] — user skipped.");
+                        AppendConsole($"  SKIP — user chose not to overwrite [{tableName}].");
                         return;
                     }
                     DropTable(conn, tableName);
+                    AppendConsole($"  Dropped existing table [{tableName}]. Re-creating…");
                     CreateTableFromSchema(conn, tableName, headers, fieldDefs);
                     break;
                 case ExistsAction.Overwrite:
                     DropTable(conn, tableName);
+                    AppendConsole($"  Dropped existing table [{tableName}]. Re-creating…");
                     CreateTableFromSchema(conn, tableName, headers, fieldDefs);
                     break;
             }
         }
         else
         {
+            AppendConsole($"  Creating table [{tableName}]…");
             CreateTableFromSchema(conn, tableName, headers, fieldDefs);
+            AppendConsole($"  Table [{tableName}] created.");
         }
 
+        const int batchSize = 2000;
         int rowNum = 0;
+        int batchStart = 1;
+
         while (csv.Read())
         {
             rowNum++;
@@ -486,13 +530,26 @@ public partial class MainWindow : Window
             catch (Exception ex)
             {
                 LogEntry(opts.RecordLog, $"[ERROR] Row {rowNum} in {Path.GetFileName(csvPath)}: {ex.Message}");
+                AppendConsole($"  ERROR row {rowNum}: {ex.Message}");
                 totalErrors++;
                 if (totalErrors >= maxErrors)
                     throw new ImportAbortException();
             }
+
+            // Report progress at each batch boundary
+            if (rowNum % batchSize == 0)
+            {
+                AppendConsole($"  Records {batchStart:N0}–{rowNum:N0} inserted…");
+                batchStart = rowNum + 1;
+            }
         }
 
+        // Report any remaining rows that didn't fill a full batch
+        if (rowNum % batchSize != 0 && rowNum >= batchStart)
+            AppendConsole($"  Records {batchStart:N0}–{rowNum:N0} inserted.");
+
         AppendLog($"[INFO] Finished [{tableName}]: {rowNum} row(s) processed.");
+        AppendConsole($"  Done — [{tableName}]: {rowNum:N0} total row(s) imported.");
     }
 
     private void InsertRow(SqlConnection conn, string tableName, string[] headers,
@@ -663,6 +720,7 @@ public partial class MainWindow : Window
 
         File.WriteAllText(iniPath, sb.ToString(), Encoding.UTF8);
         AppendLog($"[INFO] Saved config to {iniPath}");
+        AppendConsole($"Saved PcaWorks26.ini → {iniPath}");
         SetStatus($"Config saved → {iniPath}");
     }
 
@@ -712,6 +770,17 @@ public partial class MainWindow : Window
     // ── Helpers ────────────────────────────────────────────────────────────
     private void SetStatus(string msg) =>
         Dispatcher.Invoke(() => TxtStatus.Text = msg);
+
+    /// <summary>Appends a timestamped line to the green activity console and auto-scrolls.</summary>
+    private void AppendConsole(string message)
+    {
+        string line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        Dispatcher.InvokeAsync(() =>
+        {
+            TxtConsole.AppendText(line + "\n");
+            ConsoleScroller.ScrollToBottom();
+        });
+    }
 
     private bool AskUser(string question)
     {
