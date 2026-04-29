@@ -15,15 +15,22 @@ public partial class MainWindow : Window
 {
     // ── Data ──────────────────────────────────────────────────────────────
     private readonly ObservableCollection<CsvFileItem> _files = [];
-    private string _logPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Kw2Pw26", "import.log");
+
+    // Log path is null until the first write in a session; created lazily beside the .exe.
+    private string? _logPath;
+
+    /// <summary>Schema rows from DBFCHK.CSV, keyed by DBF name (upper-case).</summary>
+    private Dictionary<string, List<DbfFieldDef>> _dbfFields = [];
+
+    /// <summary>Table routing rows from DBF.CSV, keyed by DBF name (upper-case).</summary>
+    private Dictionary<string, DbfTableDef> _dbfTables = [];
 
     public MainWindow()
     {
         InitializeComponent();
         FileList.ItemsSource = _files;
-        Directory.CreateDirectory(Path.GetDirectoryName(_logPath)!);
+        // VIEW LOG starts disabled; enabled only once a log file has been created
+        BtnViewLog.IsEnabled = false;
     }
 
     // ── Connection String TEST ─────────────────────────────────────────────
@@ -87,6 +94,128 @@ public partial class MainWindow : Window
         SetStatus("File list cleared.");
     }
 
+    // ── .ini Folder Browse ─────────────────────────────────────────────────
+    private void BtnBrowseIni_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFolderDialog
+        {
+            Title = "Select folder to save PcaWorks26.ini"
+        };
+        if (dlg.ShowDialog(this) == true)
+            TxtIniFolder.Text = dlg.FolderName;
+    }
+
+    // ── CSV Config Folder Browse + CHECK ───────────────────────────────────
+    private void BtnBrowseCsvConfig_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFolderDialog
+        {
+            Title = "Select folder containing DBFCHK.CSV and DBF.CSV"
+        };
+        if (dlg.ShowDialog(this) == true)
+        {
+            TxtCsvConfigFolder.Text = dlg.FolderName;
+            // Reset import readiness when folder changes
+            BtnImport.IsEnabled = false;
+            _dbfFields.Clear();
+            _dbfTables.Clear();
+        }
+    }
+
+    private void BtnCheck_Click(object sender, RoutedEventArgs e)
+    {
+        var folder = TxtCsvConfigFolder.Text.Trim();
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            SetStatus("Please select a CSV config folder first.");
+            return;
+        }
+
+        var dbfchkPath = Path.Combine(folder, "DBFCHK.CSV");
+        var dbfPath    = Path.Combine(folder, "DBF.CSV");
+
+        var missing = new List<string>();
+        if (!File.Exists(dbfchkPath)) missing.Add("DBFCHK.CSV");
+        if (!File.Exists(dbfPath))    missing.Add("DBF.CSV");
+
+        if (missing.Count > 0)
+        {
+            BtnImport.IsEnabled = false;
+            SetStatus($"✘ Missing in selected folder: {string.Join(", ", missing)}");
+            return;
+        }
+
+        try
+        {
+            LoadDbfConfig(dbfchkPath, dbfPath);
+            BtnImport.IsEnabled = true;
+            SetStatus($"✔ Config loaded — {_dbfTables.Count} table(s), {_dbfFields.Values.Sum(l => l.Count)} field definition(s). IMPORT enabled.");
+        }
+        catch (Exception ex)
+        {
+            BtnImport.IsEnabled = false;
+            SetStatus($"✘ Error reading config CSV files: {ex.Message}");
+        }
+    }
+
+    /// <summary>Reads DBFCHK.CSV and DBF.CSV into in-memory dictionaries.</summary>
+    private void LoadDbfConfig(string dbfchkPath, string dbfPath)
+    {
+        var csvCfg = new CsvConfiguration(CultureInfo.InvariantCulture)
+        {
+            HasHeaderRecord = true,
+            MissingFieldFound = null,
+            BadDataFound = null,
+            HeaderValidated = null
+        };
+
+        // ── DBFCHK.CSV ──
+        _dbfFields = [];
+        using (var reader = new StreamReader(dbfchkPath, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
+        using (var csv = new CsvReader(reader, csvCfg))
+        {
+            foreach (var row in csv.GetRecords<dynamic>())
+            {
+                var dict = (IDictionary<string, object>)row;
+                string dbf   = GetField(dict, "DBF").ToUpperInvariant();
+                string field = GetField(dict, "FIELD");
+                string type  = GetField(dict, "TYPE").ToUpperInvariant();
+                int.TryParse(GetField(dict, "LEN"), out int len);
+                int.TryParse(GetField(dict, "DEC"), out int dec);
+                string dir   = GetField(dict, "DIR");
+
+                if (!_dbfFields.TryGetValue(dbf, out var list))
+                {
+                    list = [];
+                    _dbfFields[dbf] = list;
+                }
+                list.Add(new DbfFieldDef(field, type, len, dec, dir));
+            }
+        }
+
+        // ── DBF.CSV ──
+        _dbfTables = [];
+        using (var reader = new StreamReader(dbfPath, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
+        using (var csv = new CsvReader(reader, csvCfg))
+        {
+            foreach (var row in csv.GetRecords<dynamic>())
+            {
+                var dict = (IDictionary<string, object>)row;
+                string dbf = GetField(dict, "DBF").ToUpperInvariant();
+                string dir = GetField(dict, "DIR").ToUpperInvariant();
+                bool isCompany = dir == "COMP";
+                _dbfTables[dbf] = new DbfTableDef(dbf, isCompany);
+            }
+        }
+    }
+
+    private static string GetField(IDictionary<string, object> row, string key)
+    {
+        // Case-insensitive lookup
+        var pair = row.FirstOrDefault(kv => string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase));
+        return pair.Value?.ToString()?.Trim() ?? string.Empty;
+    }
+
     // ── Bottom Buttons ─────────────────────────────────────────────────────
     private void BtnClear_Click(object sender, RoutedEventArgs e)
     {
@@ -100,6 +229,18 @@ public partial class MainWindow : Window
         CmbRecordExists.SelectedIndex = 0;
         CmbRecordLog.SelectedIndex = 0;
         TxtMaxErrors.Text = "10";
+        CmbImportSystemTables.SelectedIndex = 0;
+        TxtSystemDbName.Text = "PcaWorks26";
+        CmbImportCompanyTables.SelectedIndex = 0;
+        TxtCompanyDbName.Text = "Pca2026";
+        CmbSaveConfig.SelectedIndex = 0;
+        TxtIniFolder.Text = string.Empty;
+        TxtCsvConfigFolder.Text = string.Empty;
+        _dbfFields.Clear();
+        _dbfTables.Clear();
+        _logPath = null;
+        BtnImport.IsEnabled = false;
+        BtnViewLog.IsEnabled = false;
         SetStatus("Form cleared.");
     }
 
@@ -122,7 +263,30 @@ public partial class MainWindow : Window
         int maxErrors = ParseMaxErrors();
         var options = BuildOptions();
 
+        // Save .ini config before import if requested
+        if (CmbSaveConfig.SelectedIndex == 0)
+        {
+            var iniFolder = TxtIniFolder.Text.Trim();
+            if (string.IsNullOrWhiteSpace(iniFolder))
+            {
+                SetStatus("Please choose a folder for PcaWorks26.ini, or set 'Save DB config?' to No.");
+                return;
+            }
+            try
+            {
+                SaveIniFile(iniFolder, connStr, TxtSystemDbName.Text.Trim(), TxtCompanyDbName.Text.Trim());
+            }
+            catch (Exception ex)
+            {
+                SetStatus($"Failed to save .ini file: {ex.Message}");
+                return;
+            }
+        }
+
         BtnImport.IsEnabled = false;
+        // Fresh timestamped log file for each import run
+        _logPath = null;
+        BtnViewLog.IsEnabled = false;
         SetStatus("Importing…");
 
         try
@@ -142,12 +306,25 @@ public partial class MainWindow : Window
 
     private void BtnViewLog_Click(object sender, RoutedEventArgs e)
     {
-        if (!File.Exists(_logPath))
+        // Use current session's log, or fall back to the most recent log in the exe folder.
+        string? path = _logPath;
+
+        if (path is null || !File.Exists(path))
         {
-            SetStatus("Log file does not exist yet.");
+            path = Directory
+                .EnumerateFiles(AppContext.BaseDirectory, "*_Kw2Pw26.log")
+                .OrderByDescending(f => f)
+                .FirstOrDefault();
+        }
+
+        if (path is null || !File.Exists(path))
+        {
+            SetStatus("No log file found.");
             return;
         }
-        System.Diagnostics.Process.Start("notepad.exe", _logPath);
+
+        System.Diagnostics.Process.Start(
+            new System.Diagnostics.ProcessStartInfo("notepad.exe", path) { UseShellExecute = true });
     }
 
     private void BtnExit_Click(object sender, RoutedEventArgs e) => Close();
@@ -157,34 +334,52 @@ public partial class MainWindow : Window
     {
         int totalErrors = 0;
 
-        using var conn = new SqlConnection(connStr);
-        conn.Open();
+        // Parse base connection string once; we will switch the Database= part per file
+        var baseBuilder = new SqlConnectionStringBuilder(connStr);
 
-        // Check / create database
-        string dbName = conn.Database;
-        if (!DatabaseExists(conn, dbName))
-        {
-            switch (opts.DatabaseExists)
+        // Sort: system tables first (DIR != COMP), then company tables, alphabetically within each group.
+        // Files not found in DBF.CSV are treated as system tables.
+        var ordered = files
+            .OrderBy(f =>
             {
-                case ExistsAction.ErrorAndExit:
-                    throw new InvalidOperationException($"Database '{dbName}' does not exist.");
-                case ExistsAction.Ask:
-                    if (!AskUser($"Database '{dbName}' does not exist. Create it?"))
-                        throw new OperationCanceledException("User cancelled.");
-                    CreateDatabase(conn, dbName);
-                    break;
-                case ExistsAction.Overwrite:
-                    CreateDatabase(conn, dbName);
-                    break;
-                // Skip: proceed anyway (connection already points to the db)
-            }
-        }
+                string key = Path.GetFileNameWithoutExtension(f.FileName).ToUpperInvariant();
+                return _dbfTables.TryGetValue(key, out var def) && def.IsCompany ? 1 : 0;
+            })
+            .ThenBy(f => f.FileName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        foreach (var file in files)
+        AppendLog($"[INFO] Import order ({ordered.Count} file(s)): " +
+                  string.Join(", ", ordered.Select(f => f.FileName)));
+
+        foreach (var file in ordered)
         {
             try
             {
-                ImportFile(conn, file.FullPath, opts, ref totalErrors, maxErrors);
+                // Determine target database from DBF.CSV routing; fall back based on user options
+                string tableKey = Path.GetFileNameWithoutExtension(file.FileName).ToUpperInvariant();
+                bool isCompany = _dbfTables.TryGetValue(tableKey, out var tableDef) && tableDef.IsCompany;
+
+                if (isCompany && !opts.ImportCompanyTables)
+                {
+                    AppendLog($"[SKIP] {file.FileName} → company table, Import Company Tables = No.");
+                    continue;
+                }
+                if (!isCompany && !opts.ImportSystemTables)
+                {
+                    AppendLog($"[SKIP] {file.FileName} → system table, Import System Tables = No.");
+                    continue;
+                }
+
+                string targetDb = isCompany ? opts.CompanyDbName : opts.SystemDbName;
+                baseBuilder.InitialCatalog = targetDb;
+
+                using var conn = new SqlConnection(baseBuilder.ConnectionString);
+                conn.Open();
+
+                EnsureDatabase(conn, targetDb, opts);
+
+                _dbfFields.TryGetValue(tableKey, out var fieldDefs);
+                ImportFile(conn, file.FullPath, fieldDefs, opts, ref totalErrors, maxErrors);
             }
             catch (ImportAbortException)
             {
@@ -204,13 +399,36 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ImportFile(SqlConnection conn, string csvPath, ImportOptions opts,
+    private void EnsureDatabase(SqlConnection conn, string dbName, ImportOptions opts)
+    {
+        // Connection is already open against the target DB; check existence via master
+        bool exists = DatabaseExists(conn, dbName);
+        if (exists) return;
+
+        switch (opts.DatabaseExists)
+        {
+            case ExistsAction.ErrorAndExit:
+                throw new InvalidOperationException($"Database '{dbName}' does not exist.");
+            case ExistsAction.Ask:
+                if (!AskUser($"Database '{dbName}' does not exist. Create it?"))
+                    throw new OperationCanceledException("User cancelled.");
+                CreateDatabase(conn, dbName);
+                break;
+            case ExistsAction.Overwrite:
+                CreateDatabase(conn, dbName);
+                break;
+            // Skip: proceed — SQL Server will error if objects are missing, caught upstream
+        }
+    }
+
+    private void ImportFile(SqlConnection conn, string csvPath,
+                             List<DbfFieldDef>? fieldDefs, ImportOptions opts,
                              ref int totalErrors, int maxErrors)
     {
         string tableName = Path.GetFileNameWithoutExtension(csvPath);
-        AppendLog($"[INFO] Processing file: {Path.GetFileName(csvPath)} → table [{tableName}]");
+        AppendLog($"[INFO] Processing file: {Path.GetFileName(csvPath)} → [{conn.Database}].[{tableName}]");
 
-        var config = new CsvConfiguration(CultureInfo.InvariantCulture)
+        var csvCfg = new CsvConfiguration(CultureInfo.InvariantCulture)
         {
             HasHeaderRecord = true,
             MissingFieldFound = null,
@@ -218,7 +436,7 @@ public partial class MainWindow : Window
         };
 
         using var reader = new StreamReader(csvPath, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-        using var csv = new CsvReader(reader, config);
+        using var csv = new CsvReader(reader, csvCfg);
 
         csv.Read();
         csv.ReadHeader();
@@ -242,17 +460,17 @@ public partial class MainWindow : Window
                         return;
                     }
                     DropTable(conn, tableName);
-                    CreateTable(conn, tableName, headers);
+                    CreateTableFromSchema(conn, tableName, headers, fieldDefs);
                     break;
                 case ExistsAction.Overwrite:
                     DropTable(conn, tableName);
-                    CreateTable(conn, tableName, headers);
+                    CreateTableFromSchema(conn, tableName, headers, fieldDefs);
                     break;
             }
         }
         else
         {
-            CreateTable(conn, tableName, headers);
+            CreateTableFromSchema(conn, tableName, headers, fieldDefs);
         }
 
         int rowNum = 0;
@@ -349,11 +567,73 @@ public partial class MainWindow : Window
         return (int)cmd.ExecuteScalar()! > 0;
     }
 
-    private static void CreateTable(SqlConnection conn, string tableName, string[] headers)
+    /// <summary>
+    /// Creates the table using typed column definitions from DBFCHK.CSV when available;
+    /// falls back to NVARCHAR(MAX) for any column not in the schema.
+    /// </summary>
+    private static void CreateTableFromSchema(SqlConnection conn, string tableName,
+                                               string[] headers, List<DbfFieldDef>? fieldDefs)
     {
-        string cols = string.Join(", ", headers.Select(h => $"{EscapeId(h)} NVARCHAR(MAX)"));
-        using var cmd = new SqlCommand($"CREATE TABLE {EscapeId(tableName)} ({cols})", conn);
+        // Build a lookup of field name → definition (case-insensitive)
+        var lookup = fieldDefs?
+            .ToDictionary(f => f.FieldName, f => f, StringComparer.OrdinalIgnoreCase)
+            ?? new Dictionary<string, DbfFieldDef>(StringComparer.OrdinalIgnoreCase);
+
+        var colDefs = headers.Select(h =>
+        {
+            string sqlType = lookup.TryGetValue(h, out var def)
+                ? MapSqlType(def)
+                : "NVARCHAR(MAX)";
+            return $"{EscapeId(h)} {sqlType}";
+        });
+
+        using var cmd = new SqlCommand(
+            $"CREATE TABLE {EscapeId(tableName)} ({string.Join(", ", colDefs)})", conn);
         cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>Maps a DBFCHK field definition to a SQL Server data type string.</summary>
+    private static string MapSqlType(DbfFieldDef def)
+    {
+        if (def.Type == "C")
+        {
+            int len = def.Length > 0 ? def.Length : 255;
+            return $"NVARCHAR({len})";
+        }
+
+        if (def.Type == "N")
+        {
+            if (IsMoney(def.FieldName))
+                return "MONEY";
+
+            if (def.Decimals > 0)
+            {
+                int precision = def.Length > 0 ? def.Length : 18;
+                return $"DECIMAL({precision},{def.Decimals})";
+            }
+
+            // Integer — choose smallest fitting type
+            return def.Length switch
+            {
+                <= 4  => "SMALLINT",
+                <= 9  => "INT",
+                <= 18 => "BIGINT",
+                _     => "DECIMAL(38,0)"
+            };
+        }
+
+        // Unknown type — safe fallback
+        return "NVARCHAR(MAX)";
+    }
+
+    private static readonly string[] _moneyKeywords =
+        ["AMT", "AMOUNT", "PRICE", "COST", "BALANCE", "TOTAL"];
+
+    /// <summary>Returns true if the field name suggests a monetary value.</summary>
+    private static bool IsMoney(string fieldName)
+    {
+        string upper = fieldName.ToUpperInvariant();
+        return _moneyKeywords.Any(k => upper.Contains(k));
     }
 
     private static void DropTable(SqlConnection conn, string tableName)
@@ -364,17 +644,68 @@ public partial class MainWindow : Window
 
     private static string EscapeId(string name) => $"[{name.Replace("]", "]]")}]";
 
-    // ── Logging ────────────────────────────────────────────────────────────
-    private void AppendLog(string message)
+    // ── .ini Config Save ───────────────────────────────────────────────────
+    /// <summary>
+    /// Creates/overwrites PcaWorks26.ini in the chosen folder with database connection details.
+    /// </summary>
+    private void SaveIniFile(string folder, string connectionString, string systemDbName, string companyDbName)
     {
-        string line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}  {message}";
-        File.AppendAllText(_logPath, line + Environment.NewLine);
+        Directory.CreateDirectory(folder);
+        string iniPath = Path.Combine(folder, "PcaWorks26.ini");
+
+        var sb = new StringBuilder();
+        sb.AppendLine("[Database]");
+        sb.AppendLine($"ConnectionString={connectionString}");
+        sb.AppendLine($"SystemDatabase={systemDbName}");
+        sb.AppendLine($"CompanyDatabase={companyDbName}");
+        sb.AppendLine();
+        sb.AppendLine($"; Generated by Kw2Pw26 on {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+
+        File.WriteAllText(iniPath, sb.ToString(), Encoding.UTF8);
+        AppendLog($"[INFO] Saved config to {iniPath}");
+        SetStatus($"Config saved → {iniPath}");
     }
 
+    // ── Logging ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Resolves (and lazily creates) the session log path: &lt;exe folder&gt;\yyyyMMdd_HHmmss_Kw2Pw26.log.
+    /// The file itself is not created until the first write.
+    /// </summary>
+    private string EnsureLogPath()
+    {
+        if (_logPath is null)
+        {
+            string exeDir = AppContext.BaseDirectory;
+            string stamp  = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            _logPath = Path.Combine(exeDir, $"{stamp}_Kw2Pw26.log");
+        }
+        return _logPath;
+    }
+
+    /// <summary>Appends a timestamped line to the session log, creating the file on first write.</summary>
+    private void AppendLog(string message)
+    {
+        string path = EnsureLogPath();
+        string line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}  {message}";
+        File.AppendAllText(path, line + Environment.NewLine);
+
+        // Enable VIEW LOG the moment the file exists
+        Dispatcher.InvokeAsync(() => BtnViewLog.IsEnabled = true);
+    }
+
+    /// <summary>
+    /// Writes to the log only when the entry's severity matches the configured level.
+    /// Errors are always written regardless of level.
+    /// </summary>
     private void LogEntry(LogLevel level, string message)
     {
-        if (level == LogLevel.None) return;
-        if (level == LogLevel.Errors && !message.StartsWith("[ERROR")) return;
+        bool isError = message.StartsWith("[ERROR", StringComparison.Ordinal);
+
+        if (level == LogLevel.None && !isError) return;
+        if (level == LogLevel.Errors && !isError) return;
+        // LogLevel.All: write everything
+
         AppendLog(message);
     }
 
@@ -400,12 +731,16 @@ public partial class MainWindow : Window
     }
 
     private ImportOptions BuildOptions() => new(
-        DatabaseExists: ComboToAction(CmbDatabaseExists),
-        DatabaseLog:    ComboToLog(CmbDatabaseLog),
-        TableExists:    ComboToAction(CmbTableExists),
-        TableLog:       ComboToLog(CmbTableLog),
-        RecordExists:   ComboToAction(CmbRecordExists),
-        RecordLog:      ComboToLog(CmbRecordLog));
+        DatabaseExists:       ComboToAction(CmbDatabaseExists),
+        DatabaseLog:          ComboToLog(CmbDatabaseLog),
+        TableExists:          ComboToAction(CmbTableExists),
+        TableLog:             ComboToLog(CmbTableLog),
+        RecordExists:         ComboToAction(CmbRecordExists),
+        RecordLog:            ComboToLog(CmbRecordLog),
+        ImportSystemTables:   CmbImportSystemTables.SelectedIndex == 0,
+        ImportCompanyTables:  CmbImportCompanyTables.SelectedIndex == 0,
+        SystemDbName:         TxtSystemDbName.Text.Trim(),
+        CompanyDbName:        TxtCompanyDbName.Text.Trim());
 
     private static ExistsAction ComboToAction(ComboBox cmb) => cmb.SelectedIndex switch
     {
@@ -447,6 +782,16 @@ public enum LogLevel { Errors, All, None }
 public record ImportOptions(
     ExistsAction DatabaseExists, LogLevel DatabaseLog,
     ExistsAction TableExists,    LogLevel TableLog,
-    ExistsAction RecordExists,   LogLevel RecordLog);
+    ExistsAction RecordExists,   LogLevel RecordLog,
+    bool ImportSystemTables,
+    bool ImportCompanyTables,
+    string SystemDbName,
+    string CompanyDbName);
 
 public class ImportAbortException : Exception { }
+
+/// <summary>One row from DBFCHK.CSV — describes a single column in a CSV/DBF file.</summary>
+public record DbfFieldDef(string FieldName, string Type, int Length, int Decimals, string Dir);
+
+/// <summary>One row from DBF.CSV — routes a CSV file to system or company database.</summary>
+public record DbfTableDef(string DbfName, bool IsCompany);

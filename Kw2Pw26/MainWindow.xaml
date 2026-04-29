@@ -45,7 +45,7 @@
         <Border DockPanel.Dock="Bottom" BorderBrush="#CCCCCC" BorderThickness="0,1,0,0" Padding="0,6,0,0" Margin="0,6,0,0">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                 <Button x:Name="BtnClear"    Content="CLEAR"    Style="{StaticResource BottomBtn}" Click="BtnClear_Click"/>
-                <Button x:Name="BtnImport"   Content="IMPORT"   Style="{StaticResource BottomBtn}" Click="BtnImport_Click"/>
+                <Button x:Name="BtnImport"   Content="IMPORT"   Style="{StaticResource BottomBtn}" Click="BtnImport_Click" IsEnabled="False"/>
                 <Button x:Name="BtnViewLog"  Content="VIEW LOG" Style="{StaticResource BottomBtn}" Width="80" Click="BtnViewLog_Click"/>
                 <Button x:Name="BtnExit"     Content="EXIT"     Style="{StaticResource BottomBtn}" Click="BtnExit_Click"/>
             </StackPanel>
@@ -91,6 +91,25 @@
                 </Grid>
             </GroupBox>
 
+            <!-- CSV Config Files (DBFCHK.CSV / DBF.CSV) -->
+            <GroupBox Header="CSV Config Location (DBFCHK.CSV &amp; DBF.CSV)" Padding="6,4">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="TxtCsvConfigFolder" Grid.Column="0" IsReadOnly="True" Background="#F5F5F5"
+                             ToolTip="Folder containing DBFCHK.CSV and DBF.CSV"/>
+                    <Button x:Name="BtnBrowseCsvConfig" Content="Browse…" Grid.Column="1"
+                            Style="{StaticResource SmallBtn}" Margin="4,0,0,0"
+                            Click="BtnBrowseCsvConfig_Click"/>
+                    <Button x:Name="BtnCheck" Content="CHECK" Grid.Column="2"
+                            Style="{StaticResource SmallBtn}" Margin="4,0,0,0"
+                            Click="BtnCheck_Click"/>
+                </Grid>
+            </GroupBox>
+
             <!-- File List -->
             <GroupBox Header="CSV Files" Padding="6,4">
                 <StackPanel>
@@ -133,6 +152,12 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="4"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="4"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="4"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="4"/>
                         <RowDefinition Height="Auto"/>
@@ -198,6 +223,48 @@
                     <TextBox x:Name="TxtMaxErrors" Grid.Row="6" Grid.Column="3" Grid.ColumnSpan="6"
                              Width="60" HorizontalAlignment="Left" Margin="4,0,0,0"
                              Text="10" ToolTip="Maximum errors before aborting import (blank = 10)"/>
+
+                    <!-- ROW 5: Import System Tables -->
+                    <Label Grid.Row="8" Grid.Column="0" Content="Import System Tables?"/>
+                    <ComboBox x:Name="CmbImportSystemTables" Grid.Row="8" Grid.Column="1" Grid.ColumnSpan="2"
+                              SelectedIndex="0">
+                        <ComboBoxItem Content="Yes"/>
+                        <ComboBoxItem Content="No"/>
+                    </ComboBox>
+                    <Label Grid.Row="8" Grid.Column="3" Content="DB Name:" Margin="6,0,2,0"/>
+                    <TextBox x:Name="TxtSystemDbName" Grid.Row="8" Grid.Column="4" Grid.ColumnSpan="5"
+                             Text="PcaWorks26" ToolTip="System tables database name"/>
+
+                    <!-- ROW 6: Import Company Tables -->
+                    <Label Grid.Row="10" Grid.Column="0" Content="Import Company Tables?"/>
+                    <ComboBox x:Name="CmbImportCompanyTables" Grid.Row="10" Grid.Column="1" Grid.ColumnSpan="2"
+                              SelectedIndex="0">
+                        <ComboBoxItem Content="Yes"/>
+                        <ComboBoxItem Content="No"/>
+                    </ComboBox>
+                    <Label Grid.Row="10" Grid.Column="3" Content="DB Name:" Margin="6,0,2,0"/>
+                    <TextBox x:Name="TxtCompanyDbName" Grid.Row="10" Grid.Column="4" Grid.ColumnSpan="5"
+                             Text="Pca2026" ToolTip="Company tables database name"/>
+
+                    <!-- ROW 7: Save DB config .ini -->
+                    <Label Grid.Row="12" Grid.Column="0" Content="Save DB config?"/>
+                    <ComboBox x:Name="CmbSaveConfig" Grid.Row="12" Grid.Column="1" Grid.ColumnSpan="2"
+                              SelectedIndex="0">
+                        <ComboBoxItem Content="Yes"/>
+                        <ComboBoxItem Content="No"/>
+                    </ComboBox>
+                    <Label Grid.Row="12" Grid.Column="3" Content=".ini File:" Margin="6,0,2,0"/>
+                    <Grid Grid.Row="12" Grid.Column="4" Grid.ColumnSpan="5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="TxtIniFolder" Grid.Column="0" IsReadOnly="True" Background="#F5F5F5"
+                                 ToolTip="Folder where PcaWorks26.ini will be created"/>
+                        <Button x:Name="BtnBrowseIni" Content="Browse…" Grid.Column="1"
+                                Style="{StaticResource SmallBtn}" Margin="4,0,0,0"
+                                Click="BtnBrowseIni_Click"/>
+                    </Grid>
                 </Grid>
             </GroupBox>
 
