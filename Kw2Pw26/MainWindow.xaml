@@ -325,11 +325,6 @@
             <!-- Activity Console -->
             <GroupBox Header="Activity" Padding="4,4,4,4" Margin="0,0,0,6">
                 <Border BorderBrush="#333333" BorderThickness="1" CornerRadius="2">
-                    <ScrollViewer x:Name="ConsoleScroller"
-                                  Height="140"
-                                  VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Auto"
-                                  Background="Black">
                         <TextBox x:Name="TxtConsole"
                                  Background="Black"
                                  Foreground="#00FF00"
@@ -340,10 +335,12 @@
                                  TextWrapping="NoWrap"
                                  VerticalAlignment="Stretch"
                                  HorizontalAlignment="Stretch"
+                                 Height="140"
                                  MinHeight="140"
                                  Padding="4,2"
+                                 ScrollViewer.VerticalScrollBarVisibility="Visible"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                  Text=""/>
-                    </ScrollViewer>
                 </Border>
             </GroupBox>
 

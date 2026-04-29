@@ -824,10 +824,7 @@ public partial class MainWindow : Window
         Dispatcher.InvokeAsync(() =>
         {
             TxtConsole.AppendText(line + "\n");
-            // Defer scroll until after WPF has completed its layout pass for the new text.
-            TxtConsole.Dispatcher.InvokeAsync(
-                () => ConsoleScroller.ScrollToBottom(),
-                System.Windows.Threading.DispatcherPriority.Background);
+            TxtConsole.ScrollToEnd();
         });
     }
 
