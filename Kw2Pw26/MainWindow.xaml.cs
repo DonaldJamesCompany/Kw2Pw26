@@ -255,7 +255,6 @@ public partial class MainWindow : Window
         BtnImport.IsEnabled = false;
         BtnViewLog.IsEnabled = false;
         ChkCreateIdField.IsChecked = true;
-        ChkSeparateFolders.IsChecked = false;
         SetStatus("Form cleared.");
         TxtConsole.Clear();
         AppendConsole("Form cleared — ready.");
@@ -439,19 +438,6 @@ public partial class MainWindow : Window
 
                 _dbfFields.TryGetValue(tableKey, out var fieldDefs);
                 ImportFile(conn, file.FullPath, fieldDefs, opts, ref totalErrors, maxErrors);
-
-                // If "Separate into DB type folders?" is enabled, copy the source CSV into a
-                // COMP or SYS subfolder beside the original file.
-                if (opts.SeparateIntoFolders)
-                {
-                    string subFolder = isCompany ? "COMP" : "SYS";
-                    string destDir = Path.Combine(Path.GetDirectoryName(file.FullPath)!, subFolder);
-                    Directory.CreateDirectory(destDir);
-                    string destPath = Path.Combine(destDir, file.FileName);
-                    File.Copy(file.FullPath, destPath, overwrite: true);
-                    AppendLog($"[INFO] Copied {file.FileName} → {subFolder}\\");
-                    AppendConsole($"  Copied {file.FileName} → {subFolder}\\");
-                }
             }
             catch (ImportAbortException)
             {
@@ -870,8 +856,7 @@ public partial class MainWindow : Window
         ImportCompanyTables:  CmbImportCompanyTables.SelectedIndex == 0,
         SystemDbName:         TxtSystemDbName.Text.Trim(),
         CompanyDbName:        TxtCompanyDbName.Text.Trim(),
-        CreateIdField:        ChkCreateIdField.IsChecked == true,
-        SeparateIntoFolders:  ChkSeparateFolders.IsChecked == true);
+        CreateIdField:        ChkCreateIdField.IsChecked == true);
 
     private static ExistsAction ComboToAction(ComboBox cmb) => cmb.SelectedIndex switch
     {
@@ -918,8 +903,7 @@ public record ImportOptions(
     bool ImportCompanyTables,
     string SystemDbName,
     string CompanyDbName,
-    bool CreateIdField,
-    bool SeparateIntoFolders);
+    bool CreateIdField);
 
 public class ImportAbortException : Exception { }
 
