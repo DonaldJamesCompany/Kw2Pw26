@@ -315,11 +315,19 @@
 
                     <!-- ROW 8: Create ID field -->
                     <CheckBox x:Name="ChkCreateIdField"
-                              Grid.Row="14" Grid.Column="0" Grid.ColumnSpan="9"
+                              Grid.Row="14" Grid.Column="0" Grid.ColumnSpan="5"
                               Content="Create ID field?"
                               IsChecked="True"
                               VerticalAlignment="Center"
                               Margin="0,2,0,0"/>
+
+                    <!-- ROW 8b: Separate into DB type folders -->
+                    <CheckBox x:Name="ChkSeparateFolders"
+                              Grid.Row="14" Grid.Column="5" Grid.ColumnSpan="4"
+                              Content="Separate into DB type folders?"
+                              IsChecked="False"
+                              VerticalAlignment="Center"
+                              Margin="6,2,0,0"/>
                 </Grid>
             </GroupBox>
 

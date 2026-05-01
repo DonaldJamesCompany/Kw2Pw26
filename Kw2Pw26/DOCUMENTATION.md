@@ -19,7 +19,8 @@
 7. [Column & Data Type Mapping](#7-column--data-type-mapping)
 8. [Null & Blank-Row Handling](#8-null--blank-row-handling)
 9. [Optional NewID Column](#9-optional-newid-column)
-10. [INI Config Export](#10-ini-config-export)
+10. [Separate into DB Type Folders](#9a-separate-into-db-type-folders)
+11. [INI Config Export](#10-ini-config-export)
 11. [Logging](#11-logging)
 12. [Activity Console](#12-activity-console)
 13. [STOP / Cancellation](#13-stop--cancellation)
@@ -81,6 +82,9 @@ structure inside SQL Server and populate it with the exported records.
 - **Batch progress size** — How many rows between activity console progress updates.
 - **Create ID field?** *(checked by default)* — Prepends a `NewID BIGINT IDENTITY(1,1)` column
   to every created table.
+- **Separate into DB type folders?** *(unchecked by default)* — After each file is successfully
+  imported, copies the source `.CSV` file into a `COMP` or `SYS` subfolder created inside the
+  CSV source folder. Files routed to the Company DB go into `COMP\`; all others go into `SYS\`.
 
 ### Bottom Bar
 | Button | State | Action |
@@ -189,7 +193,6 @@ All columns are created **nullable** (`NULL`) to maximise import resilience.
 ---
 
 ## 9. Optional NewID Column
-
 When **Create ID field?** is checked (default: on):
 
 ```sql
@@ -202,6 +205,22 @@ auto-incrementing integer to each inserted row. `BIGINT` supports values up to
 
 > Note: because the column is `IDENTITY`, it must **not** be included in the `INSERT` column
 > list — the application handles this automatically.
+
+---
+
+## 9a. Separate into DB Type Folders
+
+When **Separate into DB type folders?** is checked (default: off), after each CSV file is
+successfully imported the source file is **copied** (not moved) into a subfolder created inside
+the CSV source folder:
+
+| Destination folder | Files copied there |
+|---|---|
+| `<CSV Folder>\COMP\` | Files whose `DIR` field in `DBF.CSV` equals `COMP` (Company tables) |
+| `<CSV Folder>\SYS\` | All other files (System tables) |
+
+The subfolders are created automatically if they do not exist. Existing files in the subfolders
+are overwritten. The original source files are left in place.
 
 ---
 

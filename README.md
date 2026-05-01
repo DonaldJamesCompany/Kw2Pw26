@@ -24,6 +24,7 @@ database, preserving the original schema and data as faithfully as possible.
 | **System / Company routing** | Tables flagged `DIR=COMP` are imported into the Company database; all others go into the System database. |
 | **Import ordering** | Files are ordered by the `DIR` field — system tables first, then company tables. |
 | **Optional auto-ID column** | A `NewID BIGINT IDENTITY(1,1)` column can be prepended to every table for surrogate key support. |
+| **Separate into DB type folders** | Optionally copies each processed CSV into a `COMP` or `SYS` subfolder beside the source files after import. |
 | **Null & blank-row safety** | Completely blank rows are silently skipped; all data columns are created `NULL`-able. |
 | **Connection testing** | Built-in test confirms SQL Server connectivity before any import begins. |
 | **`.ini` config export** | Saves a `PcaWorks26.ini` file alongside the data for use by companion applications. |
