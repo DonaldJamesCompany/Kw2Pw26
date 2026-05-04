@@ -10,7 +10,7 @@
 
 ## Screenshot
 
-![Kw2Pw26 Application Screenshot](Kw2Pw26/screenshots/Kw2Pw26_screenshot.png)
+![Kw2Pw26 Application Screenshot](https://www.donaldjamescompany.com/public/screenshots/Kw2Pw26_screenshot.png)
 
 ---
 
