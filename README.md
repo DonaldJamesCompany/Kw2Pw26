@@ -10,10 +10,7 @@
 
 ## Screenshot
 
-![Kw2Pw26 Application Screenshot](Kw2Pw26/screenshots/Kw2Pw26_screenshot.png)
-
-> If the image above does not load, view it here:
-> [https://www.donaldjamescompany.com/public/screenshots/Kw2Pw26_screenshot.png](https://www.donaldjamescompany.com/public/screenshots/Kw2Pw26_screenshot.png)
+![Kw2Pw26 Application Screenshot](https://www.donaldjamescompany.com/public/screenshots/Kw2Pw26_screenshot.png)
 
 ---
 
