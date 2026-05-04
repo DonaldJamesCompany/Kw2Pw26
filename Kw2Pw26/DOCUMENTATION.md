@@ -28,6 +28,15 @@
 
 ---
 
+## Screenshot
+
+![Kw2Pw26 Application Screenshot](screenshots/Kw2Pw26_screenshot.png)
+
+> If the image above does not load, view it here:
+> [https://www.donaldjamescompany.com/public/screenshots/Kw2Pw26_screenshot.png](https://www.donaldjamescompany.com/public/screenshots/Kw2Pw26_screenshot.png)
+
+---
+
 ## 1. Application Overview
 
 Kw2Pw26 bridges **KWorks / Abraxas** legacy FoxPro data exports and a modern **SQL Server 2022**

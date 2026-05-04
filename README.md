@@ -8,6 +8,15 @@
 
 ---
 
+## Screenshot
+
+![Kw2Pw26 Application Screenshot](Kw2Pw26/screenshots/Kw2Pw26_screenshot.png)
+
+> If the image above does not load, view it here:
+> [https://www.donaldjamescompany.com/public/screenshots/Kw2Pw26_screenshot.png](https://www.donaldjamescompany.com/public/screenshots/Kw2Pw26_screenshot.png)
+
+---
+
 ## Overview
 
 **Kw2Pw26** is a standalone portable Windows GUI application (.NET 9 / WPF) that reads the
@@ -59,6 +68,7 @@ database, preserving the original schema and data as faithfully as possible.
 ```
 Kw2Pw26/
 ├── Icons/              Application icon assets
+├── screenshots/        Application screenshots
 ├── MainWindow.xaml     WPF UI definition
 ├── MainWindow.xaml.cs  All application logic (import, schema, logging)
 ├── Kw2Pw26.csproj      Project file (.NET 9 WPF, self-contained publish)
